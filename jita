@@ -1,0 +1,985 @@
+// ==========================================
+// JUST IN TIME APP MARKETPLACE
+// Complete JavaScript Application
+// ==========================================
+
+// ==========================================
+// 1. GLOBAL VARIABLES & CONFIGURATION
+// ==========================================
+
+const CONFIG = {
+  API_BASE_URL: 'https://api.example.com',
+  ITEMS_PER_PAGE: 12,
+  CACHE_DURATION: 5 * 60 * 1000, // 5 minutes
+  DEBOUNCE_DELAY: 300
+};
+
+// State Management
+const AppState = {
+  currentUser: null,
+  cart: [],
+  apps: [],
+  categories: [],
+  currentCategory: 'all',
+  currentPage: 1,
+  searchQuery: '',
+  sortBy: 'popular',
+  favorites: new Set(),
+  isLoading: false
+};
+
+// ==========================================
+// 2. MOCK DATA - Sample Apps Database
+// ==========================================
+
+const MOCK_APPS = [
+  {
+    id: 1,
+    name: 'TaskMaster Pro',
+    category: 'productivity',
+    price: 29.99,
+    rating: 4.8,
+    downloads: 125000,
+    icon: '📋',
+    description: 'Advanced task management with AI-powered prioritization',
+    developer: 'ProductivityCo',
+    features: ['Smart scheduling', 'Team collaboration', 'Analytics'],
+    screenshots: ['screenshot1.jpg', 'screenshot2.jpg']
+  },
+  {
+    id: 2,
+    name: 'PhotoEdit Studio',
+    category: 'creative',
+    price: 0,
+    rating: 4.6,
+    downloads: 250000,
+    icon: '🎨',
+    description: 'Professional photo editing made simple',
+    developer: 'CreativeTools',
+    features: ['AI filters', 'Batch processing', 'Cloud sync'],
+    screenshots: ['screenshot1.jpg', 'screenshot2.jpg']
+  },
+  {
+    id: 3,
+    name: 'FitTrack',
+    category: 'health',
+    price: 9.99,
+    rating: 4.9,
+    downloads: 500000,
+    icon: '💪',
+    description: 'Your personal fitness companion',
+    developer: 'HealthTech',
+    features: ['Workout plans', 'Calorie tracking', 'Progress charts'],
+    screenshots: ['screenshot1.jpg', 'screenshot2.jpg']
+  },
+  {
+    id: 4,
+    name: 'CodeSnippet Manager',
+    category: 'developer',
+    price: 19.99,
+    rating: 4.7,
+    downloads: 75000,
+    icon: '💻',
+    description: 'Organize and share your code snippets',
+    developer: 'DevTools Inc',
+    features: ['Syntax highlighting', 'Search', 'Version control'],
+    screenshots: ['screenshot1.jpg', 'screenshot2.jpg']
+  },
+  {
+    id: 5,
+    name: 'BudgetWise',
+    category: 'finance',
+    price: 14.99,
+    rating: 4.5,
+    downloads: 180000,
+    icon: '💰',
+    description: 'Smart budgeting and expense tracking',
+    developer: 'FinanceApps',
+    features: ['Auto categorization', 'Bill reminders', 'Reports'],
+    screenshots: ['screenshot1.jpg', 'screenshot2.jpg']
+  },
+  {
+    id: 6,
+    name: 'MindfulMoments',
+    category: 'health',
+    price: 0,
+    rating: 4.8,
+    downloads: 320000,
+    icon: '🧘',
+    description: 'Meditation and mindfulness guide',
+    developer: 'WellnessStudios',
+    features: ['Guided meditations', 'Sleep sounds', 'Progress tracking'],
+    screenshots: ['screenshot1.jpg', 'screenshot2.jpg']
+  },
+  {
+    id: 7,
+    name: 'VideoStream Pro',
+    category: 'entertainment',
+    price: 12.99,
+    rating: 4.4,
+    downloads: 450000,
+    icon: '🎬',
+    description: 'HD video streaming platform',
+    developer: 'MediaStream',
+    features: ['Offline downloads', '4K support', 'Multi-device'],
+    screenshots: ['screenshot1.jpg', 'screenshot2.jpg']
+  },
+  {
+    id: 8,
+    name: 'LearnHub',
+    category: 'education',
+    price: 24.99,
+    rating: 4.9,
+    downloads: 95000,
+    icon: '📚',
+    description: 'Interactive learning platform',
+    developer: 'EduTech',
+    features: ['Video courses', 'Quizzes', 'Certificates'],
+    screenshots: ['screenshot1.jpg', 'screenshot2.jpg']
+  }
+];
+
+const CATEGORIES = [
+  { id: 'all', name: 'All Apps', icon: '📱' },
+  { id: 'productivity', name: 'Productivity', icon: '⚡' },
+  { id: 'creative', name: 'Creative', icon: '🎨' },
+  { id: 'health', name: 'Health & Fitness', icon: '💪' },
+  { id: 'developer', name: 'Developer Tools', icon: '💻' },
+  { id: 'finance', name: 'Finance', icon: '💰' },
+  { id: 'entertainment', name: 'Entertainment', icon: '🎬' },
+  { id: 'education', name: 'Education', icon: '📚' }
+];
+
+// ==========================================
+// 3. UTILITY FUNCTIONS
+// ==========================================
+
+// Debounce function for search
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+// Format price
+function formatPrice(price) {
+  return price === 0 ? 'FREE' : `$${price.toFixed(2)}`;
+}
+
+// Format number with K/M suffix
+function formatNumber(num) {
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+  return num.toString();
+}
+
+// Generate star rating HTML
+function generateStarRating(rating) {
+  const fullStars = Math.floor(rating);
+  const hasHalfStar = rating % 1 >= 0.5;
+  const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+  
+  let stars = '★'.repeat(fullStars);
+  if (hasHalfStar) stars += '⯨';
+  stars += '☆'.repeat(emptyStars);
+  
+  return `<span class="stars">${stars}</span> <span class="rating-value">${rating}</span>`;
+}
+
+// Local storage helpers
+const Storage = {
+  save: (key, value) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+      console.error('Storage save error:', e);
+    }
+  },
+  
+  load: (key, defaultValue = null) => {
+    try {
+      const item = localStorage.getItem(key);
+      return item ? JSON.parse(item) : defaultValue;
+    } catch (e) {
+      console.error('Storage load error:', e);
+      return defaultValue;
+    }
+  },
+  
+  remove: (key) => {
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {
+      console.error('Storage remove error:', e);
+    }
+  }
+};
+
+// ==========================================
+// 4. DATA MANAGEMENT & FILTERING
+// ==========================================
+
+// Initialize app data
+function initializeData() {
+  AppState.apps = [...MOCK_APPS];
+  AppState.categories = [...CATEGORIES];
+  
+  // Load saved data from localStorage
+  const savedCart = Storage.load('cart', []);
+  const savedFavorites = Storage.load('favorites', []);
+  const savedUser = Storage.load('currentUser', null);
+  
+  AppState.cart = savedCart;
+  AppState.favorites = new Set(savedFavorites);
+  AppState.currentUser = savedUser;
+}
+
+// Filter and sort apps
+function getFilteredApps() {
+  let filtered = [...AppState.apps];
+  
+  // Filter by category
+  if (AppState.currentCategory !== 'all') {
+    filtered = filtered.filter(app => app.category === AppState.currentCategory);
+  }
+  
+  // Filter by search query
+  if (AppState.searchQuery) {
+    const query = AppState.searchQuery.toLowerCase();
+    filtered = filtered.filter(app => 
+      app.name.toLowerCase().includes(query) ||
+      app.description.toLowerCase().includes(query) ||
+      app.developer.toLowerCase().includes(query)
+    );
+  }
+  
+  // Sort apps
+  filtered.sort((a, b) => {
+    switch (AppState.sortBy) {
+      case 'popular':
+        return b.downloads - a.downloads;
+      case 'rating':
+        return b.rating - a.rating;
+      case 'price-low':
+        return a.price - b.price;
+      case 'price-high':
+        return b.price - a.price;
+      case 'name':
+        return a.name.localeCompare(b.name);
+      default:
+        return 0;
+    }
+  });
+  
+  return filtered;
+}
+
+// Get paginated apps
+function getPaginatedApps() {
+  const filtered = getFilteredApps();
+  const startIndex = (AppState.currentPage - 1) * CONFIG.ITEMS_PER_PAGE;
+  const endIndex = startIndex + CONFIG.ITEMS_PER_PAGE;
+  
+  return {
+    apps: filtered.slice(startIndex, endIndex),
+    total: filtered.length,
+    totalPages: Math.ceil(filtered.length / CONFIG.ITEMS_PER_PAGE)
+  };
+}
+
+// ==========================================
+// 5. CART MANAGEMENT
+// ==========================================
+
+function addToCart(appId) {
+  const app = AppState.apps.find(a => a.id === appId);
+  if (!app) return;
+  
+  // Check if already in cart
+  if (AppState.cart.find(item => item.id === appId)) {
+    showNotification('App already in cart', 'info');
+    return;
+  }
+  
+  AppState.cart.push({ ...app, addedAt: Date.now() });
+  Storage.save('cart', AppState.cart);
+  
+  updateCartUI();
+  showNotification(`${app.name} added to cart`, 'success');
+}
+
+function removeFromCart(appId) {
+  const index = AppState.cart.findIndex(item => item.id === appId);
+  if (index === -1) return;
+  
+  const app = AppState.cart[index];
+  AppState.cart.splice(index, 1);
+  Storage.save('cart', AppState.cart);
+  
+  updateCartUI();
+  showNotification(`${app.name} removed from cart`, 'info');
+}
+
+function clearCart() {
+  AppState.cart = [];
+  Storage.save('cart', []);
+  updateCartUI();
+  showNotification('Cart cleared', 'info');
+}
+
+function getCartTotal() {
+  return AppState.cart.reduce((total, item) => total + item.price, 0);
+}
+
+// ==========================================
+// 6. FAVORITES MANAGEMENT
+// ==========================================
+
+function toggleFavorite(appId) {
+  if (AppState.favorites.has(appId)) {
+    AppState.favorites.delete(appId);
+    showNotification('Removed from favorites', 'info');
+  } else {
+    AppState.favorites.add(appId);
+    showNotification('Added to favorites', 'success');
+  }
+  
+  Storage.save('favorites', Array.from(AppState.favorites));
+  renderApps();
+}
+
+function isFavorite(appId) {
+  return AppState.favorites.has(appId);
+}
+
+// ==========================================
+// 7. UI RENDERING FUNCTIONS
+// ==========================================
+
+// Render navigation
+function renderNavigation() {
+  const nav = document.getElementById('main-nav');
+  if (!nav) return;
+  
+  nav.innerHTML = `
+    <div class="nav-container">
+      <div class="logo">
+        <span class="logo-icon">🚀</span>
+        <h1>JIT Marketplace</h1>
+      </div>
+      
+      <div class="nav-links">
+        <a href="#home" class="nav-link active">Home</a>
+        <a href="#apps" class="nav-link">Apps</a>
+        <a href="#categories" class="nav-link">Categories</a>
+        <a href="#about" class="nav-link">About</a>
+      </div>
+      
+      <div class="nav-actions">
+        <div class="search-box">
+          <input type="text" id="search-input" placeholder="Search apps..." />
+          <span class="search-icon">🔍</span>
+        </div>
+        
+        <button class="btn-icon" id="favorites-btn" title="Favorites">
+          ❤️ <span class="badge">${AppState.favorites.size}</span>
+        </button>
+        
+        <button class="btn-icon" id="cart-btn" title="Cart">
+          🛒 <span class="badge">${AppState.cart.length}</span>
+        </button>
+        
+        ${AppState.currentUser ? 
+          `<div class="user-menu">
+            <img src="https://ui-avatars.com/api/?name=${AppState.currentUser.name}" alt="User" />
+            <span>${AppState.currentUser.name}</span>
+          </div>` : 
+          `<button class="btn-primary" id="login-btn">Login</button>`
+        }
+      </div>
+    </div>
+  `;
+}
+
+// Render categories
+function renderCategories() {
+  const container = document.getElementById('categories-container');
+  if (!container) return;
+  
+  container.innerHTML = `
+    <div class="categories-grid">
+      ${AppState.categories.map(cat => `
+        <button 
+          class="category-card ${AppState.currentCategory === cat.id ? 'active' : ''}"
+          data-category="${cat.id}"
+        >
+          <span class="category-icon">${cat.icon}</span>
+          <span class="category-name">${cat.name}</span>
+        </button>
+      `).join('')}
+    </div>
+  `;
+}
+
+// Render sorting options
+function renderSortOptions() {
+  const container = document.getElementById('sort-container');
+  if (!container) return;
+  
+  container.innerHTML = `
+    <div class="sort-controls">
+      <label for="sort-select">Sort by:</label>
+      <select id="sort-select">
+        <option value="popular" ${AppState.sortBy === 'popular' ? 'selected' : ''}>Most Popular</option>
+        <option value="rating" ${AppState.sortBy === 'rating' ? 'selected' : ''}>Highest Rated</option>
+        <option value="price-low" ${AppState.sortBy === 'price-low' ? 'selected' : ''}>Price: Low to High</option>
+        <option value="price-high" ${AppState.sortBy === 'price-high' ? 'selected' : ''}>Price: High to Low</option>
+        <option value="name" ${AppState.sortBy === 'name' ? 'selected' : ''}>Name</option>
+      </select>
+    </div>
+  `;
+}
+
+// Render app card
+function createAppCard(app) {
+  const isFav = isFavorite(app.id);
+  const inCart = AppState.cart.some(item => item.id === app.id);
+  
+  return `
+    <div class="app-card" data-app-id="${app.id}">
+      <div class="app-header">
+        <div class="app-icon">${app.icon}</div>
+        <button class="favorite-btn ${isFav ? 'active' : ''}" data-app-id="${app.id}">
+          ${isFav ? '❤️' : '🤍'}
+        </button>
+      </div>
+      
+      <div class="app-body">
+        <h3 class="app-name">${app.name}</h3>
+        <p class="app-developer">${app.developer}</p>
+        <p class="app-description">${app.description}</p>
+        
+        <div class="app-stats">
+          <div class="stat">
+            ${generateStarRating(app.rating)}
+          </div>
+          <div class="stat">
+            <span class="stat-icon">⬇️</span>
+            <span>${formatNumber(app.downloads)}</span>
+          </div>
+        </div>
+        
+        <div class="app-features">
+          ${app.features.slice(0, 3).map(f => `<span class="feature-tag">${f}</span>`).join('')}
+        </div>
+      </div>
+      
+      <div class="app-footer">
+        <div class="app-price">${formatPrice(app.price)}</div>
+        <button 
+          class="btn-primary ${inCart ? 'btn-disabled' : ''}" 
+          data-action="add-to-cart" 
+          data-app-id="${app.id}"
+          ${inCart ? 'disabled' : ''}
+        >
+          ${inCart ? 'In Cart' : app.price === 0 ? 'Get' : 'Add to Cart'}
+        </button>
+        <button class="btn-secondary" data-action="view-details" data-app-id="${app.id}">
+          Details
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+// Render apps grid
+function renderApps() {
+  const container = document.getElementById('apps-grid');
+  if (!container) return;
+  
+  AppState.isLoading = true;
+  container.innerHTML = '<div class="loading">Loading apps...</div>';
+  
+  // Simulate loading delay
+  setTimeout(() => {
+    const { apps, total, totalPages } = getPaginatedApps();
+    
+    if (apps.length === 0) {
+      container.innerHTML = `
+        <div class="no-results">
+          <div class="no-results-icon">😔</div>
+          <h3>No apps found</h3>
+          <p>Try adjusting your filters or search query</p>
+        </div>
+      `;
+      AppState.isLoading = false;
+      return;
+    }
+    
+    container.innerHTML = `
+      <div class="results-header">
+        <p>Showing ${apps.length} of ${total} apps</p>
+      </div>
+      <div class="apps-grid">
+        ${apps.map(app => createAppCard(app)).join('')}
+      </div>
+    `;
+    
+    renderPagination(totalPages);
+    AppState.isLoading = false;
+  }, 300);
+}
+
+// Render pagination
+function renderPagination(totalPages) {
+  const container = document.getElementById('pagination-container');
+  if (!container || totalPages <= 1) {
+    if (container) container.innerHTML = '';
+    return;
+  }
+  
+  const maxButtons = 7;
+  let startPage = Math.max(1, AppState.currentPage - Math.floor(maxButtons / 2));
+  let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+  
+  if (endPage - startPage < maxButtons - 1) {
+    startPage = Math.max(1, endPage - maxButtons + 1);
+  }
+  
+  let buttons = '';
+  
+  // Previous button
+  buttons += `
+    <button class="page-btn" data-page="${AppState.currentPage - 1}" 
+      ${AppState.currentPage === 1 ? 'disabled' : ''}>
+      ← Prev
+    </button>
+  `;
+  
+  // First page
+  if (startPage > 1) {
+    buttons += `<button class="page-btn" data-page="1">1</button>`;
+    if (startPage > 2) buttons += `<span class="page-ellipsis">...</span>`;
+  }
+  
+  // Page numbers
+  for (let i = startPage; i <= endPage; i++) {
+    buttons += `
+      <button class="page-btn ${i === AppState.currentPage ? 'active' : ''}" data-page="${i}">
+        ${i}
+      </button>
+    `;
+  }
+  
+  // Last page
+  if (endPage < totalPages) {
+    if (endPage < totalPages - 1) buttons += `<span class="page-ellipsis">...</span>`;
+    buttons += `<button class="page-btn" data-page="${totalPages}">${totalPages}</button>`;
+  }
+  
+  // Next button
+  buttons += `
+    <button class="page-btn" data-page="${AppState.currentPage + 1}" 
+      ${AppState.currentPage === totalPages ? 'disabled' : ''}>
+      Next →
+    </button>
+  `;
+  
+  container.innerHTML = `<div class="pagination">${buttons}</div>`;
+}
+
+// Render cart
+function updateCartUI() {
+  // Update cart badge
+  const cartBadges = document.querySelectorAll('#cart-btn .badge');
+  cartBadges.forEach(badge => {
+    badge.textContent = AppState.cart.length;
+  });
+  
+  // Update cart modal if open
+  const cartModal = document.getElementById('cart-modal');
+  if (cartModal && cartModal.style.display === 'block') {
+    renderCartModal();
+  }
+}
+
+function renderCartModal() {
+  const modal = document.getElementById('cart-modal');
+  if (!modal) return;
+  
+  const total = getCartTotal();
+  
+  modal.innerHTML = `
+    <div class="modal-content cart-modal-content">
+      <div class="modal-header">
+        <h2>Shopping Cart</h2>
+        <button class="close-btn" data-action="close-modal">&times;</button>
+      </div>
+      
+      <div class="modal-body">
+        ${AppState.cart.length === 0 ? `
+          <div class="empty-cart">
+            <div class="empty-icon">🛒</div>
+            <h3>Your cart is empty</h3>
+            <p>Add some apps to get started!</p>
+          </div>
+        ` : `
+          <div class="cart-items">
+            ${AppState.cart.map(item => `
+              <div class="cart-item">
+                <div class="cart-item-icon">${item.icon}</div>
+                <div class="cart-item-info">
+                  <h4>${item.name}</h4>
+                  <p>${item.developer}</p>
+                </div>
+                <div class="cart-item-price">${formatPrice(item.price)}</div>
+                <button class="btn-remove" data-action="remove-from-cart" data-app-id="${item.id}">
+                  🗑️
+                </button>
+              </div>
+            `).join('')}
+          </div>
+          
+          <div class="cart-summary">
+            <div class="cart-total">
+              <span>Total:</span>
+              <span class="total-amount">${formatPrice(total)}</span>
+            </div>
+            <button class="btn-primary btn-large" data-action="checkout">
+              Proceed to Checkout
+            </button>
+            <button class="btn-secondary" data-action="clear-cart">
+              Clear Cart
+            </button>
+          </div>
+        `}
+      </div>
+    </div>
+  `;
+  
+  modal.style.display = 'block';
+}
+
+// Render app details modal
+function renderAppDetailsModal(appId) {
+  const app = AppState.apps.find(a => a.id === appId);
+  if (!app) return;
+  
+  const modal = document.getElementById('app-details-modal');
+  if (!modal) return;
+  
+  const isFav = isFavorite(app.id);
+  const inCart = AppState.cart.some(item => item.id === app.id);
+  
+  modal.innerHTML = `
+    <div class="modal-content app-details-content">
+      <div class="modal-header">
+        <div class="app-title-section">
+          <div class="app-icon-large">${app.icon}</div>
+          <div>
+            <h2>${app.name}</h2>
+            <p class="developer-name">${app.developer}</p>
+          </div>
+        </div>
+        <button class="close-btn" data-action="close-modal">&times;</button>
+      </div>
+      
+      <div class="modal-body">
+        <div class="app-details-stats">
+          <div class="detail-stat">
+            ${generateStarRating(app.rating)}
+          </div>
+          <div class="detail-stat">
+            <span class="stat-label">Downloads</span>
+            <span class="stat-value">${formatNumber(app.downloads)}</span>
+          </div>
+          <div class="detail-stat">
+            <span class="stat-label">Category</span>
+            <span class="stat-value">${app.category}</span>
+          </div>
+          <div class="detail-stat">
+            <span class="stat-label">Price</span>
+            <span class="stat-value">${formatPrice(app.price)}</span>
+          </div>
+        </div>
+        
+        <div class="app-description-full">
+          <h3>About this app</h3>
+          <p>${app.description}</p>
+        </div>
+        
+        <div class="app-features-full">
+          <h3>Features</h3>
+          <ul>
+            ${app.features.map(f => `<li>✓ ${f}</li>`).join('')}
+          </ul>
+        </div>
+        
+        <div class="app-actions">
+          <button 
+            class="btn-primary btn-large ${inCart ? 'btn-disabled' : ''}" 
+            data-action="add-to-cart" 
+            data-app-id="${app.id}"
+            ${inCart ? 'disabled' : ''}
+          >
+            ${inCart ? 'Already in Cart' : app.price === 0 ? 'Get App' : 'Add to Cart'}
+          </button>
+          
+          <button 
+            class="btn-secondary btn-large ${isFav ? 'active' : ''}" 
+            data-action="toggle-favorite" 
+            data-app-id="${app.id}"
+          >
+            ${isFav ? '❤️ Remove from Favorites' : '🤍 Add to Favorites'}
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  modal.style.display = 'block';
+}
+
+// ==========================================
+// 8. NOTIFICATION SYSTEM
+// ==========================================
+
+function showNotification(message, type = 'info') {
+  const container = document.getElementById('notifications-container') || createNotificationsContainer();
+  
+  const notification = document.createElement('div');
+  notification.className = `notification notification-${type}`;
+  notification.innerHTML = `
+    <span class="notification-icon">
+      ${type === 'success' ? '✓' : type === 'error' ? '✗' : 'ℹ'}
+    </span>
+    <span class="notification-message">${message}</span>
+  `;
+  
+  container.appendChild(notification);
+  
+  // Animate in
+  setTimeout(() => notification.classList.add('show'), 10);
+  
+  // Remove after 3 seconds
+  setTimeout(() => {
+    notification.classList.remove('show');
+    setTimeout(() => notification.remove(), 300);
+  }, 3000);
+}
+
+function createNotificationsContainer() {
+  const container = document.createElement('div');
+  container.id = 'notifications-container';
+  container.className = 'notifications-container';
+  document.body.appendChild(container);
+  return container;
+}
+
+// ==========================================
+// 9. EVENT HANDLERS
+// ==========================================
+
+// Search handler
+const handleSearch = debounce((query) => {
+  AppState.searchQuery = query.trim();
+  AppState.currentPage = 1;
+  renderApps();
+}, CONFIG.DEBOUNCE_DELAY);
+
+// Category change handler
+function handleCategoryChange(categoryId) {
+  AppState.currentCategory = categoryId;
+  AppState.currentPage = 1;
+  renderCategories();
+  renderApps();
+}
+
+// Sort change handler
+function handleSortChange(sortBy) {
+  AppState.sortBy = sortBy;
+  AppState.currentPage = 1;
+  renderApps();
+}
+
+// Page change handler
+function handlePageChange(page) {
+  AppState.currentPage = parseInt(page);
+  renderApps();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Checkout handler
+function handleCheckout() {
+  if (AppState.cart.length === 0) {
+    showNotification('Your cart is empty', 'info');
+    return;
+  }
+  
+  // Simulate checkout process
+  showNotification('Processing checkout...', 'info');
+  
+  setTimeout(() => {
+    showNotification(`Successfully purchased ${AppState.cart.length} apps!`, 'success');
+    clearCart();
+    closeAllModals();
+  }, 1500);
+}
+
+// Modal handlers
+function closeAllModals() {
+  const modals = document.querySelectorAll('.modal');
+  modals.forEach(modal => modal.style.display = 'none');
+}
+
+// ==========================================
+// 10. EVENT DELEGATION
+// ==========================================
+
+function setupEventListeners() {
+  // Global click handler
+  document.addEventListener('click', (e) => {
+    const target = e.target;
+    const action = target.dataset.action;
+    
+    // Handle actions
+    switch (action) {
+      case 'add-to-cart':
+        addToCart(parseInt(target.dataset.appId));
+        break;
+      case 'remove-from-cart':
+        removeFromCart(parseInt(target.dataset.appId));
+        break;
+      case 'toggle-favorite':
+        toggleFavorite(parseInt(target.dataset.appId));
+        break;
+      case 'view-details':
+        renderAppDetailsModal(parseInt(target.dataset.appId));
+        break;
+      case 'clear-cart':
+        if (confirm('Clear all items from cart?')) clearCart();
+        break;
+      case 'checkout':
+        handleCheckout();
+        break;
+      case 'close-modal':
+        closeAllModals();
+        break;
+    }
+    
+    // Category buttons
+    if (target.closest('.category-card')) {
+      const category = target.closest('.category-card').dataset.category;
+      handleCategoryChange(category);
+    }
+    
+    // Favorite buttons
+    if (target.closest('.favorite-btn')) {
+      const appId = parseInt(target.closest('.favorite-btn').dataset.appId);
+      toggleFavorite(appId);
+    }
+    
+    // Pagination buttons
+    if (target.closest('.page-btn') && !target.disabled) {
+      const page = parseInt(target.closest('.page-btn').dataset.page);
+      if (!isNaN(page)) handlePageChange(page);
+    }
+    
+    // Cart button
+    if (target.closest('#cart-btn')) {
+      renderCartModal();
+    }
+    
+    // Favorites button
+    if (target.closest('#favorites-btn')) {
+      showNotification('Favorites view coming soon!', 'info');
+    }
+    
+    // Close modal on outside click
+    if (target.classList.contains('modal')) {
+      closeAllModals();
+    }
+  });
+  
+  // Search input
+  document.addEventListener('input', (e) => {
+    if (e.target.id === 'search-input') {
+      handleSearch(e.target.value);
+    }
+  });
+  
+  // Sort select
+  document.addEventListener('change', (e) => {
+    if (e.target.id === 'sort-select') {
+      handleSortChange(e.target.value);
+    }
+  });
+  
+  // Keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    // ESC to close modals
+    if (e.key === 'Escape') {
+      closeAllModals();
+    }
+    
+    // Ctrl/Cmd + K for search
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      e.preventDefault();
+      document.getElementById('search-input')?.focus();
+    }
+  });
+}
+
+// ==========================================
+// 11. INITIALIZATION
+// ==========================================
+
+function initializeApp() {
+  console.log('🚀 Initializing JIT Marketplace...');
+  
+  // Initialize data
+  initializeData();
+  
+  // Render initial UI
+  renderNavigation();
+  renderCategories();
+  renderSortOptions();
+  renderApps();
+  
+  // Setup event listeners
+  setupEventListeners();
+  
+  console.log('✅ App initialized successfully!');
+  showNotification('Welcome to JIT Marketplace!', 'success');
+}
+
+// ==========================================
+// 12. APP ENTRY POINT
+// ==========================================
+
+// Wait for DOM to be ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeApp);
+} else {
+  initializeApp();
+}
+
+// Export for testing (if needed)
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    AppState,
+    initializeData,
+    getFilteredApps,
+    addToCart,
+    removeFromCart,
+    toggleFavorite,
+    formatPrice,
+    formatNumber
+  };
+}
